@@ -1,0 +1,12 @@
+{
+  "name": "busy-file-indicator",
+  "version": "1.0.0",
+  "scripts": {
+    "api": "pnpm --filter busy-file-indicator-api",
+    "extension": "pnpm --filter @busy-file-indicator/extension",
+    "extension:package": "pnpm extension vsce package",
+    "extension:publish": "pnpm extension vsce publish"
+  },
+  "author": "",
+  "license": "ISC"
+}
