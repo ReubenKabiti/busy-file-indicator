@@ -9,7 +9,7 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": ["onCommand:busy-file-indicator.markAsBusy", "onCommand:busy-file-indicator.markAsIdle"],
+  "activationEvents": ["*"],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [

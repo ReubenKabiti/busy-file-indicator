@@ -1,23 +1,27 @@
 import * as vscode from "vscode";
-export type StatusBarIndicator = "busy" | "idle";
 
-export function statusBarIndicator(
+export enum StatusBarIndicatorStatus {
+  BUSY = "BUSY",
+  IDLE = "IDLE"
+}
+
+export function showStatusBarIndicator(
   myStatusBarItem: vscode.StatusBarItem,
-  status: StatusBarIndicator,
+  status: StatusBarIndicatorStatus,
   command: vscode.Command
 ) {
-  if (status === "busy") {
-    myStatusBarItem.text = "Busy File Indicator: IDLE";
-    myStatusBarItem.color = "white";
-    myStatusBarItem.backgroundColor = new vscode.ThemeColor(
-      "statusBarItem.warningBackground"
-    );
-    myStatusBarItem.command = command;
-  } else {
-    myStatusBarItem.text = "Busy File Indicator: BUSY";
+  if (status === StatusBarIndicatorStatus.BUSY) {
+    myStatusBarItem.text = "Busy indicator: Busy 🚀";
     myStatusBarItem.color = "white";
     myStatusBarItem.backgroundColor = new vscode.ThemeColor(
       "statusBarItem.errorBackground"
+    );
+    myStatusBarItem.command = command;
+  } else {
+    myStatusBarItem.text = "Busy indicator: Idle 💤";
+    myStatusBarItem.color = "white";
+    myStatusBarItem.backgroundColor = new vscode.ThemeColor(
+      "statusBarItem.warningBackground"
     );
     myStatusBarItem.command = command;
   }
