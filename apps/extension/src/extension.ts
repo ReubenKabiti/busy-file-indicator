@@ -3,6 +3,8 @@ import { showStatusBarIndicator, StatusBarIndicatorStatus } from "./status-bar";
 import { checkUserPermission } from "./users";
 import { LocalStorageService } from "./storage";
 import { getFileNameFromWorkspaceRoot } from "./utils/files";
+import { syncExtension } from "./utils/extension";
+import { generateWorkspaceId, readWorkspaceId } from "./files";
 
 const myStatusBarItem = vscode.window.createStatusBarItem(
   vscode.StatusBarAlignment.Right,
@@ -24,34 +26,63 @@ const displayStatusBarUI = (isBusy: boolean) => {
   });
 };
 
-export function activate({
+export async function activate({
   subscriptions,
   workspaceState,
 }: vscode.ExtensionContext) {
-  let currentFile = getFileNameFromWorkspaceRoot();
-  const storageService = new LocalStorageService(workspaceState);
+  let workspaceID = await readWorkspaceId();
+  const storageService = new LocalStorageService(workspaceState, workspaceID);
 
-  const getFileStatus = () => {
+  const workspaceSyncData = await syncExtension(
+    workspaceID,
+    storageService.toJSON()
+  );
+
+  storageService.populateFromJson(workspaceSyncData.files);
+
+  let currentFile = getFileNameFromWorkspaceRoot();
+
+  const getFileStatus = (): {
+    status: StatusBarIndicatorStatus;
+    file: string;
+  } => {
     currentFile = getFileNameFromWorkspaceRoot();
 
-    if (currentFile?.length /** file is open */) {
-      const fileStatus =
-        storageService.getValue<StatusBarIndicatorStatus>(currentFile) ?? false;
-
-      if (fileStatus === StatusBarIndicatorStatus.BUSY) {
-        return displayStatusBarUI(true);
-      }
-
-      displayStatusBarUI(false);
+    if (!currentFile?.length) {
+      return { status: StatusBarIndicatorStatus.IDLE, file: "" };
     }
+
+    const fileStatus =
+      storageService.getValue<StatusBarIndicatorStatus>(currentFile) ??
+      StatusBarIndicatorStatus.IDLE;
+
+    if (fileStatus === StatusBarIndicatorStatus.BUSY) {
+      displayStatusBarUI(true);
+      return { status: fileStatus, file: currentFile };
+    }
+
+    displayStatusBarUI(false);
+
+    return { status: fileStatus, file: currentFile };
   };
 
-  const setFileStatusAsBusy = (setAsBusy: boolean) => {
+  // run status check on activation
+  getFileStatus();
+
+  const setFileStatusAsBusy = (
+    setAsBusy: boolean,
+    file: string | null = null
+  ) => {
     const canToggleFileStatus = checkUserPermission();
 
     if (canToggleFileStatus === true && currentFile) {
       if (setAsBusy) {
-        storageService.setValue(currentFile, StatusBarIndicatorStatus.BUSY);
+        storageService.setValue(
+          file ?? currentFile,
+          StatusBarIndicatorStatus.BUSY
+        );
+      } else {
+        storageService.deleteValue(file ?? currentFile);
       }
 
       // update status bar ui
@@ -59,27 +90,74 @@ export function activate({
     }
   };
 
-  // run status check on activation
-  getFileStatus();
+  /**
+   * Activation Commands
+   */
+  const markAsBusy = vscode.commands.registerCommand(
+    markAsBusyCommand,
+    async () => {
+      // persist register workspace amongst collaborators
+      if (storageService.count() === 0) {
+        workspaceID = await generateWorkspaceId();
+      }
 
-  const markAsBusy = vscode.commands.registerCommand(markAsBusyCommand, () => {
-    setFileStatusAsBusy(true);
-    vscode.window.showInformationMessage("File marked as busy");
-  });
+      setFileStatusAsBusy(true);
+      await syncExtension(workspaceID, storageService.toJSON());
+
+      vscode.window.showInformationMessage("File marked as busy");
+    }
+  );
 
   const markAsIdle = vscode.commands.registerCommand(markAsIdleCommand, () => {
     setFileStatusAsBusy(false);
     vscode.window.showInformationMessage("File marked as idle");
   });
 
-  // prevent key strokes when file is locked, show popup to user.
-  // TODO: refresh name of file on file change
-  const fileChangedEvent = vscode.workspace.onDidOpenTextDocument((e) => {
-    getFileStatus();
+  /**
+   * Activation Events
+   */
 
-    currentFile = getFileNameFromWorkspaceRoot();
-    vscode.window.showWarningMessage("current file:" + currentFile);
+  // TODO: prevent key strokes when file is locked, show popup to user.
+  // TODO: refresh name of file on file change
+  /**
+   * Renaming Files: updates all file paths in storage
+   */
+  const renameFilesEvent = vscode.workspace.onWillRenameFiles((event) => {
+    if (storageService.count() === 0) {
+      return;
+    }
+
+    for (const file of event.files) {
+      setFileStatusAsBusy(false, file.oldUri.path);
+      setFileStatusAsBusy(true, file.newUri.path);
+    }
+
+    getFileStatus();
   });
 
-  subscriptions.push(markAsBusy, markAsIdle, fileChangedEvent);
+  vscode.workspace.onWillDeleteFiles((event) => {
+    const { status } = getFileStatus();
+
+    if (status === StatusBarIndicatorStatus.BUSY) {
+      vscode.window.showWarningMessage("File is locked, can't delete");
+      event.waitUntil(Promise.reject("File is busy, can't delete"));
+    }
+  });
+
+  vscode.workspace.onDidChangeTextDocument((event) => {
+    getFileStatus();
+    vscode.window.showWarningMessage("Changed files" + currentFile);
+  });
+
+  const fileChangedEvent = vscode.workspace.onDidOpenTextDocument(() => {
+    getFileStatus();
+    vscode.window.showWarningMessage("Opened file" + currentFile);
+  });
+
+  subscriptions.push(
+    markAsBusy,
+    markAsIdle,
+    fileChangedEvent,
+    renameFilesEvent
+  );
 }
