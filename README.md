@@ -31,7 +31,4 @@ Feedback, bug reports, and contributions are welcome! Please feel free to [submi
 
 This extension is licensed under the [MIT License](LICENSE).
 
-## Credits
-
-The Busy Files Extension is developed and maintained by [Your Name](https://github.com/your-username).
 
